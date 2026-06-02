@@ -82,8 +82,12 @@ def browser(playwright_instance) -> Generator[Browser, None, None]:
     """
     import os
     headless = os.getenv("PLAYWRIGHT_HEADLESS", "false").lower() not in ("false", "0", "no")
+    # slow_mo adds a delay (ms) between every action — makes interactions
+    # feel human-paced. Default 800ms; override with PLAYWRIGHT_SLOW_MO env var.
+    slow_mo = int(os.getenv("PLAYWRIGHT_SLOW_MO", "800"))
     browser = playwright_instance.chromium.launch(
         headless=headless,
+        slow_mo=slow_mo,
         args=["--no-sandbox", "--disable-dev-shm-usage"],
     )
     yield browser

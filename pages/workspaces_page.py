@@ -23,6 +23,15 @@ class WorkspacesPage(BasePage):
         logger.info("Navigated to /workspaces")
 
     # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _reload_and_wait(self):
+        """Reload the page and wait for it to settle — used by pollers."""
+        self.page.reload()
+        self.page.wait_for_load_state("networkidle")
+
+    # ------------------------------------------------------------------
     # Row helpers
     # ------------------------------------------------------------------
 
@@ -51,26 +60,29 @@ class WorkspacesPage(BasePage):
         name: str,
         expected: str,
         timeout: int = 300_000,
-        poll_interval: int = 10_000,
+        poll_interval: int = 30_000,
     ) -> str:
         """
-        Reload the page every poll_interval ms until the workspace reaches
-        `expected` status or the timeout expires.
-        Returns the final status, raises TimeoutError on timeout.
+        Wait poll_interval ms, then reload and check status.
+        Repeats until `expected` is reached or timeout expires.
+
+        poll_interval defaults to 30s — long enough to not spam reloads
+        but short enough to catch transitions promptly.
         """
         deadline = time.time() + timeout / 1000
         logger.info(
-            "Waiting for workspace '%s' → '%s' (timeout=%ds)…",
-            name, expected, timeout // 1000,
+            "Waiting for workspace '%s' → '%s' (timeout=%ds, checking every %ds)…",
+            name, expected, timeout // 1000, poll_interval // 1000,
         )
         while time.time() < deadline:
-            self.page.reload()
-            self.page.wait_for_load_state("networkidle")
+            # Wait first, then reload — avoids reloading before the
+            # server has had a chance to process the state change
+            self.page.wait_for_timeout(poll_interval)
+            self._reload_and_wait()
             status = self.get_workspace_status(name)
             logger.info("Workspace '%s' status: %s", name, status)
             if status == expected:
                 return status
-            self.page.wait_for_timeout(poll_interval)
 
         current = self.get_workspace_status(name)
         raise TimeoutError(
@@ -79,22 +91,29 @@ class WorkspacesPage(BasePage):
         )
 
     def wait_for_running_or_error(
-        self, name: str, timeout: int = 600_000, poll_interval: int = 10_000
+        self,
+        name: str,
+        timeout: int = 600_000,
+        poll_interval: int = 30_000,
     ) -> str:
-        """Poll until Running or Error. Returns whichever is reached first."""
+        """
+        Poll until Running or Error. Returns whichever is reached first.
+        Waits poll_interval before each reload — workspace creation takes
+        several minutes so checking every 30s is plenty.
+        """
         deadline = time.time() + timeout / 1000
         logger.info(
-            "Waiting for workspace '%s' to reach Running or Error (timeout=%ds)…",
-            name, timeout // 1000,
+            "Waiting for workspace '%s' to reach Running or Error "
+            "(timeout=%ds, checking every %ds)…",
+            name, timeout // 1000, poll_interval // 1000,
         )
         while time.time() < deadline:
-            self.page.reload()
-            self.page.wait_for_load_state("networkidle")
+            self.page.wait_for_timeout(poll_interval)
+            self._reload_and_wait()
             status = self.get_workspace_status(name)
             logger.info("Workspace '%s' status: %s", name, status)
             if status in ("Running", "Error", "Failed"):
                 return status
-            self.page.wait_for_timeout(poll_interval)
 
         raise TimeoutError(
             f"Workspace '{name}' did not reach Running or Error within {timeout // 1000}s."
@@ -126,12 +145,11 @@ class WorkspacesPage(BasePage):
     def wait_for_creating_state(self, name: str, timeout: int = 60_000):
         """
         Wait for the workspace row to appear with 'Creating' status.
-        After form submission the table updates asynchronously — reload once
-        to ensure the new row is visible before waiting for the text.
+        After submission we wait 3s for the server to process, then do
+        a single reload so the new row is visible in the table.
         """
-        self.page.wait_for_load_state("networkidle")
-        self.page.reload()
-        self.page.wait_for_load_state("networkidle")
+        self.page.wait_for_timeout(3_000)   # brief pause — let server process
+        self._reload_and_wait()
         row = self.get_workspace_row(name)
         row.locator("text=Creating").wait_for(timeout=timeout)
         logger.info("Workspace '%s' is in Creating state", name)
@@ -143,11 +161,11 @@ class WorkspacesPage(BasePage):
     def disable_workspace(self, name: str):
         """Click the Disable action button for the workspace and confirm."""
         self.page.get_by_role("button", name=f"Disable {name}").click()
-        # Confirmation dialog
         self.page.get_by_role("button", name="Disable").click()
         logger.info("Clicked Disable for workspace '%s'", name)
 
     def wait_for_disabling_state(self, name: str, timeout: int = 15_000):
+        """Status badge updates in-place — no reload needed."""
         row = self.get_workspace_row(name)
         row.locator("text=Disabling").wait_for(timeout=timeout)
         logger.info("Workspace '%s' is Disabling", name)
@@ -159,11 +177,11 @@ class WorkspacesPage(BasePage):
     def enable_workspace(self, name: str):
         """Click the Enable action button for the workspace and confirm."""
         self.page.get_by_role("button", name=f"Enable {name}").click()
-        # Confirmation dialog
         self.page.get_by_role("button", name="Enable").click()
         logger.info("Clicked Enable for workspace '%s'", name)
 
     def wait_for_enabling_state(self, name: str, timeout: int = 15_000):
+        """Status badge updates in-place — no reload needed."""
         row = self.get_workspace_row(name)
         row.locator("text=Enabling").wait_for(timeout=timeout)
         logger.info("Workspace '%s' is Enabling", name)
@@ -175,29 +193,28 @@ class WorkspacesPage(BasePage):
     def delete_workspace(self, name: str):
         """Open the options menu for the workspace row and click Delete."""
         row = self.get_workspace_row(name)
-        # The options/kebab button is the last icon button in the row (no visible text)
-        # Note: .last is a property in Playwright Python, not a method call
         row.get_by_role("button").last.click()
         self.page.get_by_role("menuitem", name="Delete").click()
-        # Confirmation dialog
         self.page.get_by_role("button", name="Delete").click()
         logger.info("Clicked Delete for workspace '%s'", name)
 
     def wait_for_deleting_state(self, name: str, timeout: int = 15_000):
+        """Status badge updates in-place — no reload needed."""
         row = self.get_workspace_row(name)
         row.locator("text=Deleting").wait_for(timeout=timeout)
         logger.info("Workspace '%s' is Deleting", name)
 
-    def wait_for_workspace_deleted(self, name: str, timeout: int = 180_000, poll_interval: int = 10_000):
+    def wait_for_workspace_deleted(
+        self, name: str, timeout: int = 180_000, poll_interval: int = 30_000
+    ):
         """Poll until the workspace row disappears from the table."""
         deadline = time.time() + timeout / 1000
         while time.time() < deadline:
-            self.page.reload()
-            self.page.wait_for_load_state("networkidle")
+            self.page.wait_for_timeout(poll_interval)
+            self._reload_and_wait()
             if not self.workspace_exists(name):
                 logger.info("Workspace '%s' has been deleted ✓", name)
                 return
-            self.page.wait_for_timeout(poll_interval)
         raise TimeoutError(
             f"Workspace '{name}' was not removed from the list within {timeout // 1000}s."
         )
