@@ -1,0 +1,18 @@
+playwright>=1.49.0
+pytest>=8.3.0
+pytest-playwright>=0.6.0
+python-dotenv>=1.0.1
+boto3>=1.35.0
+botocore>=1.35.0
+requests>=2.32.3
+pytest-html>=4.1.1
+pytest-xdist>=3.5.0
+
+# Kubernetes
+kubernetes>=29.0.0
+
+# Azure
+azure-identity>=1.16.0
+azure-mgmt-resource>=23.0.0
+azure-mgmt-storage>=21.0.0
+azure-mgmt-containerservice>=30.0.0

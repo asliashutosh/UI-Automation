@@ -1,0 +1,32 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Environment — never commit secrets
+.env
+
+# Playwright JS artifacts (not needed in Python project)
+node_modules/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+playwright/.auth/
+e2e/
+package.json
+package-lock.json
+playwright.config.ts
+
+# Raw codegen recordings (reference only, not real tests)
+tests/recorded_raw.py
+tests/recorded_flow.py
+
+# Test output
+reports/
+screenshots/
+
+# macOS
+.DS_Store
