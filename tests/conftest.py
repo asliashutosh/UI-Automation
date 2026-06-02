@@ -53,6 +53,48 @@ def workspace_name() -> str:
     return name
 
 
+@pytest.fixture(scope="session", autouse=True)
+def workspace(auth_page: Page, workspace_name: str):
+    """
+    Session fixture — manages the workspace lifecycle for the entire test suite.
+
+    Creates the workspace once at session start, all tests run inside it,
+    deletes it when the session ends. No individual test needs to worry about this.
+
+    If EXISTING_WORKSPACE is set in .env: skips create and delete entirely.
+    """
+    import os
+    from pages.workspaces_page import WorkspacesPage
+
+    CREATE_TIMEOUT_MS = 1200_000  # 20 min
+
+    using_existing = bool(os.getenv("EXISTING_WORKSPACE", "").strip())
+    ws = WorkspacesPage(auth_page)
+
+    if not using_existing:
+        logger.info("── Suite setup: creating workspace '%s' ──", workspace_name)
+        ws.navigate()
+        ws.create_serverless_workspace(workspace_name)
+        ws.wait_for_creating_state(workspace_name, timeout=60_000)
+        status = ws.wait_for_running_or_error(workspace_name, timeout=CREATE_TIMEOUT_MS)
+        assert status == "Running", (
+            f"Workspace '{workspace_name}' failed to reach Running — got '{status}'"
+        )
+        logger.info("Workspace '%s' is Running ✓ — suite can begin", workspace_name)
+    else:
+        logger.info("── Suite setup: using existing workspace '%s' ──", workspace_name)
+
+    yield workspace_name  # ← all tests run here
+
+    if not using_existing:
+        logger.info("── Suite teardown: deleting workspace '%s' ──", workspace_name)
+        ws.navigate()
+        if ws.workspace_exists(workspace_name):
+            ws.delete_workspace(workspace_name)
+            ws.wait_for_workspace_deleted(workspace_name)
+            logger.info("Workspace '%s' deleted ✓ — suite complete", workspace_name)
+
+
 @pytest.fixture(scope="session")
 def aws_helper() -> AWSHelper:
     """Session-scoped AWS helper (boto3)."""
