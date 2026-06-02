@@ -44,6 +44,19 @@ class WorkspacesPage(BasePage):
         status_cell = row.locator("td").nth(1)
         return status_cell.inner_text().strip()
 
+    def open_workspace(self, name: str):
+        """
+        Click the Open button on the workspace row.
+        Returns the new popup Page (workspace app tab).
+        """
+        row = self.get_workspace_row(name)
+        with self.page.expect_popup() as popup_info:
+            row.get_by_role("button", name="Open", exact=True).click()
+        workspace_page = popup_info.value
+        workspace_page.wait_for_load_state("networkidle")
+        logger.info("Opened workspace '%s' → %s", name, workspace_page.url)
+        return workspace_page
+
     def workspace_exists(self, name: str) -> bool:
         return self.page.locator("tr", has_text=name).count() > 0
 

@@ -244,6 +244,18 @@ class E6DataAPIClient:
         resp = self._session.delete(url, timeout=HTTP_TIMEOUT)
         self._raise_for_status(resp)
 
+    def get_federation_details(self) -> Dict[str, str]:
+        """
+        GET /api/v1/federation
+        Returns workspace federation details:
+          - engine_role_arn
+          - external_id
+          - vpc_endpoint_id  (may vary by field name)
+        """
+        data = self._get("/api/v1/federation")
+        logger.info("Federation details fetched: %s", list(data.keys()))
+        return data
+
     @staticmethod
     def _raise_for_status(resp: requests.Response) -> None:
         if not resp.ok:
