@@ -36,10 +36,18 @@ logger = logging.getLogger(__name__)
 @pytest.fixture(scope="session")
 def workspace_name() -> str:
     """
-    Session-scoped unique workspace name.
-    Shared across test_workspace_creation.py and test_workspace_crud.py
-    so both operate on the same workspace within one pytest session.
+    Session-scoped workspace name.
+
+    Two modes:
+    1. EXISTING_WORKSPACE is set in .env → use that workspace (skip create/delete)
+       e.g. EXISTING_WORKSPACE=auto-75c7b41d
+    2. Not set → generate a unique name, create workspace, delete after session
     """
+    import os
+    existing = os.getenv("EXISTING_WORKSPACE", "").strip()
+    if existing:
+        logger.info("Using existing workspace: %s", existing)
+        return existing
     name = f"auto-{str(uuid.uuid4())[:8]}"
     logger.info("Session workspace name: %s", name)
     return name
