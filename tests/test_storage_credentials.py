@@ -1,25 +1,23 @@
 """
 tests/test_storage_credentials.py
 -----------------------------------
-Storage Credential CRUD tests — runs against an existing Running workspace.
+Storage Credential CRUD tests.
 
-Full flow:
-  1. Open the workspace (new browser tab)
-  2. Use the federation API to get Engine Role ARN, External ID, VPCE
-  3. Settings → Storage Credentials → New Credential
-  4. Fill name, click Launch Setup (new popup tab)
-  5. Fill wizard: S3 bucket, Glue, stack name, ARN, External ID, VPCE
-  6. Continue → AWS CLI → Download setup script
-  7. Run script locally → extract created Role ARN
-  8. Back in credential dialog → fill Role ARN → Create
-  9. Verify credential appears in the list
- 10. Cleanup — delete the credential
+Can be run in TWO ways:
 
-Run order (must follow workspace creation):
-  pytest tests/test_workspace_crud.py::TestWorkspaceCRUD::test_create_workspace
-         tests/test_storage_credentials.py
-         tests/test_workspace_crud.py::TestWorkspaceCRUD::test_disable_and_enable
-         tests/test_workspace_crud.py::TestWorkspaceCRUD::test_delete_workspace
+1. Standalone (self-contained) — creates its own workspace, runs tests, deletes it:
+   pytest tests/test_storage_credentials.py -v -s
+
+2. As part of the full suite — uses the workspace created by test_workspace_crud.py:
+   pytest tests/test_workspace_crud.py::TestWorkspaceCRUD::test_create_workspace
+          tests/test_storage_credentials.py
+          tests/test_workspace_crud.py::TestWorkspaceCRUD::test_disable_and_enable
+          tests/test_workspace_crud.py::TestWorkspaceCRUD::test_delete_workspace
+          -v -s
+
+The `ensure_running_workspace` fixture handles both cases automatically:
+  - If workspace already exists → skips creation, skips deletion after
+  - If workspace doesn't exist  → creates it, deletes it after tests finish
 """
 import logging
 import uuid
@@ -36,6 +34,45 @@ from pages.workspace_settings_page import WorkspaceSettingsPage
 from pages.workspaces_page import WorkspacesPage
 
 logger = logging.getLogger(__name__)
+
+CREATE_TIMEOUT_MS = 1200_000  # 20 min
+
+
+@pytest.fixture(scope="module", autouse=True)
+def ensure_running_workspace(auth_page: Page, workspace_name: str):
+    """
+    Ensures a Running workspace exists before storage credential tests run.
+
+    - Standalone run : workspace doesn't exist → creates it → tests run → deletes it
+    - Full suite run : workspace already exists → skips create → tests run → skips delete
+                       (test_workspace_crud.py handles deletion in the full suite)
+    """
+    ws = WorkspacesPage(auth_page)
+    ws.navigate()
+
+    created_here = False
+    if not ws.workspace_exists(workspace_name):
+        logger.info("No workspace found — creating '%s' for standalone run", workspace_name)
+        ws.create_serverless_workspace(workspace_name)
+        ws.wait_for_creating_state(workspace_name, timeout=60_000)
+        status = ws.wait_for_running_or_error(workspace_name, timeout=CREATE_TIMEOUT_MS)
+        assert status == "Running", (
+            f"Workspace '{workspace_name}' failed to start — status: {status}"
+        )
+        created_here = True
+        logger.info("Workspace '%s' is Running ✓ (created by this fixture)", workspace_name)
+    else:
+        logger.info("Workspace '%s' already exists — skipping creation", workspace_name)
+
+    yield  # ← tests run here
+
+    if created_here:
+        logger.info("Cleaning up workspace '%s' (created by this fixture)", workspace_name)
+        ws.navigate()
+        if ws.workspace_exists(workspace_name):
+            ws.delete_workspace(workspace_name)
+            ws.wait_for_workspace_deleted(workspace_name)
+            logger.info("Workspace '%s' deleted ✓", workspace_name)
 
 
 @pytest.fixture(scope="module")
