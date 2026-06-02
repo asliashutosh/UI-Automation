@@ -53,7 +53,10 @@ class WorkspacesPage(BasePage):
         with self.page.expect_popup() as popup_info:
             row.get_by_role("button", name="Open", exact=True).click()
         workspace_page = popup_info.value
-        workspace_page.wait_for_load_state("networkidle")
+        # Use "load" not "networkidle" — workspace app has continuous background
+        # polling/WebSocket traffic so networkidle never fires
+        workspace_page.wait_for_load_state("load")
+        workspace_page.wait_for_timeout(2_000)  # brief settle time
         logger.info("Opened workspace '%s' → %s", name, workspace_page.url)
         return workspace_page
 
