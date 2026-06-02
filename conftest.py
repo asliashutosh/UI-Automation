@@ -176,6 +176,7 @@ def authenticated_context(browser: Browser) -> Generator[BrowserContext, None, N
     The same context (and its cookies + org selection) is reused by every
     test that requests auth_page, so all tests run in the same browser session.
     """
+    import time as _time
     from pages.login_page import LoginPage
     from helpers.gmail_helper import GmailOTPHelper
 
@@ -191,13 +192,21 @@ def authenticated_context(browser: Browser) -> Generator[BrowserContext, None, N
     login = LoginPage(setup_page)
     login.navigate()
     login.enter_email(config.user_email)
+
+    # Record timestamp BEFORE triggering OTP so we ignore stale emails
+    otp_requested_at = _time.time()
     login.click_continue()
     login.wait_for_otp_input()
 
     # ── Auto-fetch OTP from Gmail ─────────────────────────────────────
     logger.info("Fetching OTP from Gmail (sender: no-reply@e6.run)...")
     gmail = GmailOTPHelper()
-    otp = gmail.get_otp_with_retry(sender="no-reply@e6.run", max_retries=10, interval=5)
+    otp = gmail.get_otp_with_retry(
+        sender="no-reply@e6.run",
+        max_retries=12,
+        interval=5,
+        received_after=otp_requested_at,
+    )
 
     login.fill_otp(otp)
     login.click_verify()

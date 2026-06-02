@@ -91,53 +91,78 @@ class GmailOTPHelper:
     # Public API
     # ------------------------------------------------------------------
 
-    def fetch_otp(self, sender: str = "no-reply@e6.run", unread: bool = True) -> str | None:
+    def fetch_otp(
+        self,
+        sender: str = "no-reply@e6.run",
+        received_after: float = None,
+    ) -> str | None:
         """
         Fetch the latest email from `sender` and extract the OTP.
+
+        Args:
+            sender:         Email address of the OTP sender.
+            received_after: Unix timestamp (seconds). Only accept emails
+                            received AFTER this time — prevents stale OTPs
+                            from previous sessions being reused.
+
         Returns the 6-digit OTP string, or None if not found.
         """
-        query = f"from:{sender}"
-        if unread:
-            query += " is:unread"
+        query = f"from:{sender} is:unread"
 
         results = self._service.users().messages().list(
-            userId="me", maxResults=1, q=query
+            userId="me", maxResults=5, q=query
         ).execute()
         messages = results.get("messages", [])
 
         if not messages:
-            logger.debug("No emails found matching query: %s", query)
+            logger.debug("No unread emails from %s", sender)
             return None
 
-        msg = self._service.users().messages().get(
-            userId="me", id=messages[0]["id"]
-        ).execute()
+        for message in messages:
+            msg = self._service.users().messages().get(
+                userId="me", id=message["id"]
+            ).execute()
 
-        headers = msg["payload"].get("headers", [])
-        subject = next((h["value"] for h in headers if h["name"] == "Subject"), "")
-        body = self._extract_body(msg["payload"]) or ""
+            # internalDate is milliseconds since epoch
+            email_ts = int(msg.get("internalDate", 0)) / 1000
 
-        otp = self._extract_otp(body, subject)
-        if otp:
-            logger.info("OTP extracted from Gmail: %s", otp)
-        return otp
+            if received_after and email_ts < received_after:
+                logger.debug(
+                    "Skipping email — received at %.0f, cutoff is %.0f",
+                    email_ts, received_after,
+                )
+                continue
+
+            headers = msg["payload"].get("headers", [])
+            subject = next((h["value"] for h in headers if h["name"] == "Subject"), "")
+            body = self._extract_body(msg["payload"]) or ""
+
+            otp = self._extract_otp(body, subject)
+            if otp:
+                logger.info("OTP extracted from Gmail: %s", otp)
+                return otp
+
+        return None
 
     def get_otp_with_retry(
         self,
         sender: str = "no-reply@e6.run",
-        max_retries: int = 10,
+        max_retries: int = 12,
         interval: int = 5,
+        received_after: float = None,
     ) -> str:
         """
-        Poll Gmail every `interval` seconds until the OTP email arrives.
-        Default: checks every 5s for up to 50s.
-        Raises RuntimeError if OTP is not found within the retry window.
+        Poll Gmail every `interval` seconds until a fresh OTP email arrives.
+
+        Args:
+            received_after: Unix timestamp (seconds). Pass time.time() just
+                            before triggering the OTP so stale emails are ignored.
         """
         for attempt in range(1, max_retries + 1):
             logger.info(
                 "Checking Gmail for OTP (attempt %d/%d)...", attempt, max_retries
             )
-            otp = self.fetch_otp(sender=sender)
+            otp = self.fetch_otp(sender=sender, received_after=received_after)
             if otp:
                 return otp
             if attempt < max_retries:
