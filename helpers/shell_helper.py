@@ -24,6 +24,10 @@ def run_setup_script(script_path: str, timeout: int = 300) -> str:
     """
     Execute the e6data setup shell script and extract the created Role ARN.
 
+    AWS credentials are pulled from config (which loads from .env) and
+    injected explicitly into the subprocess environment so the AWS CLI
+    inside the script can authenticate.
+
     Args:
         script_path: Absolute path to the downloaded .sh script.
         timeout:     Max seconds to wait for the script to finish (default 5 min).
@@ -34,10 +38,17 @@ def run_setup_script(script_path: str, timeout: int = 300) -> str:
     Raises:
         RuntimeError: If the script fails or no ARN is found in the output.
     """
+    from config.settings import config
+
     logger.info("Running setup script: %s", script_path)
 
-    # Pass current environment so AWS_* credentials are available
     env = os.environ.copy()
+    # Explicitly set AWS credentials from config so the script's AWS CLI calls work
+    env["AWS_ACCESS_KEY_ID"]     = config.aws_access_key_id
+    env["AWS_SECRET_ACCESS_KEY"] = config.aws_secret_access_key
+    env["AWS_DEFAULT_REGION"]    = config.aws_region
+    if config.aws_session_token:
+        env["AWS_SESSION_TOKEN"] = config.aws_session_token
 
     result = subprocess.run(
         ["bash", script_path],

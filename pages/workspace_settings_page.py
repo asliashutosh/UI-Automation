@@ -43,6 +43,20 @@ class WorkspaceSettingsPage(BasePage):
         self.page.get_by_role("textbox", name="Name").fill(name)
         logger.info("Filled credential name: %s", name)
 
+    def get_external_id(self) -> str:
+        """
+        Read the External ID from the credential dialog by clicking the
+        first Copy button and reading the clipboard value.
+        The External ID is generated server-side when you open the dialog
+        — it is NOT available from the federation API.
+        """
+        # Grant clipboard permissions so we can read what was copied
+        self.page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+        self.page.get_by_role("button", name="Copy").first.click()
+        external_id = self.page.evaluate("navigator.clipboard.readText()")
+        logger.info("External ID from dialog: %s", external_id)
+        return external_id
+
     def launch_setup(self):
         """
         Click 'Launch Setup' — opens the setup wizard in a new popup tab.

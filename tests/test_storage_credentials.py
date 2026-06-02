@@ -81,12 +81,11 @@ class TestStorageCredentials:
             base_url=workspace_base_url,
             session_cookie=config.session_cookie,
         )
+        # Federation API uses camelCase field names
         federation = workspace_api.get_federation_details()
-        engine_role_arn = federation.get("engine_role_arn") or config.test_engine_role_arn
-        external_id     = federation.get("external_id", "")
-        vpce            = federation.get("vpc_endpoint_id") or config.test_vpce
+        engine_role_arn = federation.get("engineRoleArn") or config.test_engine_role_arn
+        vpce            = federation.get("s3GatewayEndpointId") or config.test_vpce
         logger.info("Engine Role ARN : %s", engine_role_arn)
-        logger.info("External ID     : %s", external_id)
         logger.info("VPCE            : %s", vpce)
 
         # ── Step 3: Settings → Storage Credentials → New Credential ──────
@@ -95,11 +94,17 @@ class TestStorageCredentials:
         settings.click_new_credential()
         settings.fill_credential_name(credential_name)
 
-        # ── Step 4: Launch Setup → wizard popup ───────────────────────────
+        # ── Step 4: Read External ID from the credential dialog UI ────────
+        # External ID is generated server-side and shown in the dialog —
+        # it is NOT in the federation API response.
+        external_id = settings.get_external_id()
+        logger.info("External ID     : %s", external_id)
+
+        # ── Step 5: Launch Setup → wizard popup ───────────────────────────
         wizard_page = settings.launch_setup()
         wizard = CredentialSetupWizardPage(wizard_page)
 
-        # ── Step 5: Fill the setup wizard ─────────────────────────────────
+        # ── Step 6: Fill the setup wizard ─────────────────────────────────
         wizard.fill_s3_bucket(config.test_bucket)
         wizard.click_add_bucket()
         wizard.enable_glue_catalog()
