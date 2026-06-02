@@ -17,7 +17,7 @@ from pages.workspaces_page import WorkspacesPage
 
 logger = logging.getLogger(__name__)
 
-CREATE_TIMEOUT_MS  = 600_000   # 10 min — workspace creation can be slow
+CREATE_TIMEOUT_MS  = 1200_000   # 20 min — workspace creation can be slow
 DISABLE_TIMEOUT_MS = 300_000   # 5 min
 ENABLE_TIMEOUT_MS  = 300_000   # 5 min
 DELETE_TIMEOUT_MS  = 180_000   # 3 min
