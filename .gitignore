@@ -8,6 +8,10 @@ __pycache__/
 # Environment — never commit secrets
 .env
 
+# Gmail API auth — never commit these
+token.json
+credentials.json
+
 # Playwright JS artifacts (not needed in Python project)
 node_modules/
 test-results/

@@ -177,8 +177,7 @@ def authenticated_context(browser: Browser) -> Generator[BrowserContext, None, N
     test that requests auth_page, so all tests run in the same browser session.
     """
     from pages.login_page import LoginPage
-
-    OTP_WAIT_MS = 60_000
+    from helpers.gmail_helper import GmailOTPHelper
 
     context = browser.new_context(
         base_url=config.base_url,
@@ -195,12 +194,14 @@ def authenticated_context(browser: Browser) -> Generator[BrowserContext, None, N
     login.click_continue()
     login.wait_for_otp_input()
 
-    print(f"\n{'='*60}")
-    print(f"  OTP sent to {config.user_email}")
-    print(f"  You have {OTP_WAIT_MS // 1000}s to enter the code")
-    print(f"  and click 'Verify & Sign In' in the browser.")
-    print(f"{'='*60}\n")
-    setup_page.wait_for_timeout(OTP_WAIT_MS)
+    # ── Auto-fetch OTP from Gmail ─────────────────────────────────────
+    logger.info("Fetching OTP from Gmail (sender: no-reply@e6.run)...")
+    gmail = GmailOTPHelper()
+    otp = gmail.get_otp_with_retry(sender="no-reply@e6.run", max_retries=10, interval=5)
+
+    login.fill_otp(otp)
+    login.click_verify()
+    # ─────────────────────────────────────────────────────────────────
 
     login.wait_for_login_complete(timeout=30_000)
     login.switch_organization(config.org_name)

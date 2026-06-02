@@ -31,6 +31,17 @@ class LoginPage(BasePage):
         self.page.get_by_role("textbox", name="Verification Code").wait_for(timeout=timeout)
         logger.info("OTP input is visible")
 
+    def fill_otp(self, otp: str):
+        """Fill the OTP code into the verification input."""
+        self.page.get_by_role("textbox", name="Verification Code").click()
+        self.page.get_by_role("textbox", name="Verification Code").fill(otp)
+        logger.info("Filled OTP: %s", otp)
+
+    def click_verify(self):
+        """Click the Verify & Sign In button."""
+        self.page.get_by_role("button", name="Verify & Sign In").click()
+        logger.info("Clicked Verify & Sign In")
+
     def wait_for_login_complete(self, timeout: int = 120_000):
         """
         Wait for the user to complete login manually.
